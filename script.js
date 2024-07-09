@@ -74,34 +74,41 @@ function retrieveFromDatabase(key) {
 
 // Step 4: Update fetchAndCacheJson Function
 async function fetchAndCacheJson(filePath, storageKey) {
-    // Check if data is already in IndexedDB
+    console.log(`Checking cache for ${storageKey}`);
     const cachedData = await retrieveFromDatabase(storageKey);
     if (cachedData) {
         console.log(`Using cached data for ${storageKey}`);
         return cachedData;
     }
 
-    // Fetch data from server if not cached
+    console.log(`Fetching data from server for ${filePath}`);
     const response = await fetch(filePath);
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const data = await response.json();
-    
-    // Store fetched data in IndexedDB
     await storeInDatabase(storageKey, data);
     return data;
 }
 
+
+
 // Fetch and cache datasets function
-async function fetchAndCacheDatasets() {
+async function fetchAndCacheDatasets(selectedDataset) {
     try {
-        nodeData3D = await fetchAndCacheJson('Bacillus_Node_3D.json', 'nodeData3D');
-        nodeData2D = await fetchAndCacheJson('Bacillus_Node_2D.json', 'nodeData2D');
-        edgeData = await fetchAndCacheJson('Bacillus_Edge_top10_interactions.json', 'edgeData');
-        heatmapData = await fetchAndCacheJson('Bacillus_Edge_processed_with_interaction.json', 'heatmapData');
-        //geneDensityData = await fetchAndCacheJson('WT_BS_gene_density.json', 'geneDensityData');
+        console.log(`Fetching 3D node data for ${selectedDataset}`);
+        nodeData3D = await fetchAndCacheJson(`${selectedDataset}_Node_3D.json`, 'nodeData3D');
+
+        console.log(`Fetching 2D node data for ${selectedDataset}`);
+        nodeData2D = await fetchAndCacheJson(`${selectedDataset}_Node_2D.json`, 'nodeData2D');
+
+        console.log(`Fetching edge data for ${selectedDataset}`);
+        edgeData = await fetchAndCacheJson(`${selectedDataset}_Edge_top10_interactions.json`, 'edgeData');
+
+        console.log(`Fetching heatmap data for ${selectedDataset}`);
+        heatmapData = await fetchAndCacheJson(`${selectedDataset}_Edge_processed_with_interaction.json`, 'heatmapData');
+
         console.log("All datasets loaded successfully");
     } catch (error) {
         console.error("Error loading datasets:", error);
@@ -110,6 +117,7 @@ async function fetchAndCacheDatasets() {
 
 
 // Add a function to clear the local storage if needed
+
 function clearLocalStorage() {
     localStorage.removeItem('nodeData3D');
     localStorage.removeItem('nodeData2D');
@@ -117,6 +125,29 @@ function clearLocalStorage() {
     localStorage.removeItem('heatmapData');
     // localStorage.removeItem('geneDensityData');
     console.log("Local storage cleared");
+}
+
+
+// Function to clear IndexedDB
+function clearIndexedDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('myDatabase');
+
+        request.onsuccess = () => {
+            console.log("IndexedDB cleared successfully");
+            resolve();
+        };
+
+        request.onerror = (event) => {
+            console.error("Error clearing IndexedDB:", event.target.error);
+            reject(event.target.error);
+        };
+
+        request.onblocked = () => {
+            console.warn("Clear IndexedDB operation blocked");
+            resolve();
+        };
+    });
 }
 
 // Call this function when you need to clear the cache
@@ -174,152 +205,148 @@ function addDynamicEventListeners() {
     });
 
     // Visualize button functionality
-// Visualize button functionality
-document.getElementById('visualize-nodes').addEventListener('click', function() {
-    selectedNodeIdsForRange = []; // Reset the range selection
+    document.getElementById('visualize-nodes').addEventListener('click', function() {
+        selectedNodeIdsForRange = []; // Reset the range selection
 
-    // Reset sliders to 100%
-    document.getElementById('edgeWeightSlider').value = 100;
-    document.getElementById('edgeWeightValue').innerText = '100%';
-    document.getElementById('linkOpacitySlider').value = 100;
-    document.getElementById('linkOpacityValue').innerText = '100%';
+        // Reset sliders to 100%
+        document.getElementById('edgeWeightSlider').value = 100;
+        document.getElementById('edgeWeightValue').innerText = '100%';
+        document.getElementById('linkOpacitySlider').value = 100;
+        document.getElementById('linkOpacityValue').innerText = '100%';
 
-    const selectedNodeIds = Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked'))
-                                .map(checkbox => checkbox.dataset.nodeId);
-    const selectedDataset = document.getElementById('dataset-selector').value;
-    const edgeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Edge_top10_interactions.json' : 'Other_Dataset_Edge.json';
+        const selectedNodeIds = Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked'))
+                                    .map(checkbox => checkbox.dataset.nodeId);
+        const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
 
-    // Get interaction filters
-    const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
-                                    .map(checkbox => parseInt(checkbox.value));
+        // Get interaction filters
+        const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
+                                        .map(checkbox => parseInt(checkbox.value));
 
-    fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, function(filteredEdges) {
-        clearEdges3D();
-        createEdges3D(filteredEdges);  // Draw 3D edges
-        // Highlight nodes in 3D
-        highlightNodes3D(selectedNodeIds);
+        const edgeDataPath = `${selectedDataset}_Edge_top10_interactions.json`;
+        
+        fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, function(filteredEdges) {
+            clearEdges3D();
+            createEdges3D(filteredEdges);  // Draw 3D edges
+            // Highlight nodes in 3D
+            highlightNodes3D(selectedNodeIds);
 
-        const context = document.getElementById('canvas2D').getContext('2d');
-        drawEdges2D(filteredEdges, context);
+            const context = document.getElementById('canvas2D').getContext('2d');
+            drawEdges2D(filteredEdges, context);
 
-        // Heatmap Visualization
+            // Heatmap Visualization
+            selectedNodes.clear();  // Clear the set and add all currently selected nodes
+            selectedNodeIds.forEach(id => selectedNodes.add(id));
+
+            const svg = d3.select('#visualization3').select('svg');
+            updateHeatmapHighlights(svg, false);  // Pass false to indicate node highlighting
+
+            // For Parallel Plot
+            setupAndDrawParallelPlot(edgeDataPath, selectedNodeIds);
+        });
+    });
+
+    // Handle visualize-range option
+    document.getElementById('visualize-range').addEventListener('click', function() {
+        const fromBin = parseInt(document.getElementById('fromBin').value);
+        const toBin = parseInt(document.getElementById('toBin').value);
+
+        if (isNaN(fromBin) || isNaN(toBin) || fromBin > toBin) {
+            alert("Please enter a valid range of bin numbers.");
+            return;
+        }
+
+        // Reset sliders to 100%
+        document.getElementById('edgeWeightSlider').value = 100;
+        document.getElementById('edgeWeightValue').innerText = '100%';
+        document.getElementById('linkOpacitySlider').value = 100;
+        document.getElementById('linkOpacityValue').innerText = '100%';
+
+        selectedNodeIdsForRange = [];
+        for (let i = fromBin; i <= toBin; i++) {
+            selectedNodeIdsForRange.push(i.toString());
+        }
+
+        // Update the heatmap
         selectedNodes.clear();  // Clear the set and add all currently selected nodes
-        selectedNodeIds.forEach(id => selectedNodes.add(id));
+        selectedNodeIdsForRange.forEach(id => selectedNodes.add(id));
 
         const svg = d3.select('#visualization3').select('svg');
-        updateHeatmapHighlights(svg, false);  // Pass false to indicate node highlighting
+        updateHeatmapHighlights(svg, true);  // Pass true to indicate range highlighting
 
-        // For Parallel Plot
-        setupAndDrawParallelPlot(edgeDataPath, selectedNodeIds);
-    });
-});
+        const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
+        const edgeDataPath = `${selectedDataset}_Edge_top10_interactions.json`;
+        const nodeDataPath = `${selectedDataset}_Node_2D.json`;
 
-///For handling the visualize-range option//
-document.getElementById('visualize-range').addEventListener('click', function() {
-    const fromBin = parseInt(document.getElementById('fromBin').value);
-    const toBin = parseInt(document.getElementById('toBin').value);
+        const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
+                                    .map(checkbox => parseInt(checkbox.value));
 
-    if (isNaN(fromBin) || isNaN(toBin) || fromBin > toBin) {
-        alert("Please enter a valid range of bin numbers.");
-        return;
-    }
+        fetchAndFilterEdgeData(edgeDataPath, selectedNodeIdsForRange, interactionFilters, function(filteredEdges) {
+            clearEdges3D();
+            createEdges3D(filteredEdges);
+            // Highlight nodes in 3D
+            highlightNodes3D(selectedNodeIdsForRange);
 
-    // Reset sliders to 100%
-    document.getElementById('edgeWeightSlider').value = 100;
-    document.getElementById('edgeWeightValue').innerText = '100%';
-    document.getElementById('linkOpacitySlider').value = 100;
-    document.getElementById('linkOpacityValue').innerText = '100%';
+            const canvas = document.getElementById('canvas2D');
+            const context = canvas.getContext('2d');
+            fetch(nodeDataPath).then(response => response.json()).then(nodeData => {
+                clearOnlyEdges2D(context, canvas, nodeData);
+                drawEdges2D(filteredEdges, context);
+            });
 
-    selectedNodeIdsForRange = [];
-    for (let i = fromBin; i <= toBin; i++) {
-        selectedNodeIdsForRange.push(i.toString());
-    }
-
-    // Update the heatmap
-    selectedNodes.clear();  // Clear the set and add all currently selected nodes
-    selectedNodeIdsForRange.forEach(id => selectedNodes.add(id));
-
-    const svg = d3.select('#visualization3').select('svg');
-    updateHeatmapHighlights(svg, true);  // Pass true to indicate range highlighting
-
-    // Fetch and filter edges, then update the visualizations
-    const selectedDataset = document.getElementById('dataset-selector').value;
-    const edgeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Edge_top10_interactions.json' : 'Other_Dataset_Edge.json';
-    const nodeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Node_2D.json' : 'Other_Dataset_Node_data.json';
-    
-    const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
-                                .map(checkbox => parseInt(checkbox.value));
-
-    fetchAndFilterEdgeData(edgeDataPath, selectedNodeIdsForRange, interactionFilters, function(filteredEdges) {
-        clearEdges3D();
-        createEdges3D(filteredEdges);
-        // Highlight nodes in 3D
-        highlightNodes3D(selectedNodeIdsForRange);
-
-        const canvas = document.getElementById('canvas2D');
-        const context = canvas.getContext('2d');
-        fetch(nodeDataPath).then(response => response.json()).then(nodeData => {
-            clearOnlyEdges2D(context, canvas, nodeData);
-            drawEdges2D(filteredEdges, context);
+            // Update the parallel plot
+            updateParallelPlot(edgeDataPath, selectedNodeIdsForRange, filteredEdges.length);
         });
-
-        // Update the parallel plot
-        updateParallelPlot(edgeDataPath, selectedNodeIdsForRange, filteredEdges.length);
     });
-});
 
-    
-//Button for implementation of inter/intra interaction filtering for visualized edges
-document.getElementById('apply-interaction').addEventListener('click', function() {
-    const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
-                                .map(checkbox => parseInt(checkbox.value));
-    
-    if (interactionFilters.length === 0) {
-        alert("Please select at least one interaction type.");
-        return;
-    }
+    // Button for implementation of inter/intra interaction filtering for visualized edges
+    document.getElementById('apply-interaction').addEventListener('click', function() {
+        const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
+                                    .map(checkbox => parseInt(checkbox.value));
+        
+        if (interactionFilters.length === 0) {
+            alert("Please select at least one interaction type.");
+            return;
+        }
 
-    const selectedDataset = document.getElementById('dataset-selector').value;
-    const edgeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Edge_top10_interactions.json' : 'Other_Dataset_Edge.json';
-    const selectedNodeIds = selectedNodeIdsForRange.length > 0 ? selectedNodeIdsForRange : Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked')).map(checkbox => checkbox.dataset.nodeId);
-    const nodeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Node_2D.json' : 'Other_Dataset_Node_data.json';
+        const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
+        const edgeDataPath = `${selectedDataset}_Edge_top10_interactions.json`;
+        const selectedNodeIds = selectedNodeIdsForRange.length > 0 ? selectedNodeIdsForRange : Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked')).map(checkbox => checkbox.dataset.nodeId);
+        const nodeDataPath = `${selectedDataset}_Node_2D.json`;
 
-    fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, function(filteredEdges) {
-        const edgeWeightSlider = document.getElementById('edgeWeightSlider');
-        const value = edgeWeightSlider.value;
+        fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, function(filteredEdges) {
+            const edgeWeightSlider = document.getElementById('edgeWeightSlider');
+            const value = edgeWeightSlider.value;
 
-        // Calculate the number of edges to show based on the slider percentage
-        const numberOfEdgesToShow = Math.ceil(filteredEdges.length * (value / 100));
-        document.getElementById('edgeWeightValue').innerText = `${value}% (${numberOfEdgesToShow} edges)`;
-        console.log(`Slider value: ${value}% - Showing top ${numberOfEdgesToShow} weighted edges.`);
+            // Calculate the number of edges to show based on the slider percentage
+            const numberOfEdgesToShow = Math.ceil(filteredEdges.length * (value / 100));
+            document.getElementById('edgeWeightValue').innerText = `${value}% (${numberOfEdgesToShow} edges)`;
+            console.log(`Slider value: ${value}% - Showing top ${numberOfEdgesToShow} weighted edges.`);
 
-        // Sort edges by weight in descending order and take the top N based on the slider
-        filteredEdges.sort((a, b) => b.Weight - a.Weight);
-        const edgesToShow = filteredEdges.slice(0, numberOfEdgesToShow);
-        console.log(`Edges to show after filtering: ${edgesToShow.length}`);
+            // Sort edges by weight in descending order and take the top N based on the slider
+            filteredEdges.sort((a, b) => b.Weight - a.Weight);
+            const edgesToShow = filteredEdges.slice(0, numberOfEdgesToShow);
+            console.log(`Edges to show after filtering: ${edgesToShow.length}`);
 
-        // Clear and update 3D edges
-        clearEdges3D();
-        createEdges3D(edgesToShow);
-        // Highlight nodes in 3D
-        highlightNodes3D(selectedNodeIds);
+            // Clear and update 3D edges
+            clearEdges3D();
+            createEdges3D(edgesToShow);
+            // Highlight nodes in 3D
+            highlightNodes3D(selectedNodeIds);
 
-        // Clear and update 2D edges
-        const canvas = document.getElementById('canvas2D');
-        const context = canvas.getContext('2d');
-        fetch(nodeDataPath).then(response => response.json()).then(nodeData => {
-            clearOnlyEdges2D(context, canvas, nodeData);
-            drawEdges2D(edgesToShow, context);
+            // Clear and update 2D edges
+            const canvas = document.getElementById('canvas2D');
+            const context = canvas.getContext('2d');
+            fetch(nodeDataPath).then(response => response.json()).then(nodeData => {
+                clearOnlyEdges2D(context, canvas, nodeData);
+                drawEdges2D(edgesToShow, context);
+            });
+
+            // Update the parallel plot
+            updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow);
         });
-
-        // Update the parallel plot
-        updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow);
     });
-});
-
-    
-    
 }
+
 
 
 /////////////////////////////      For responsive design      /////////////////////
@@ -359,8 +386,10 @@ window.addEventListener('resize', () => {
 ////////////////////////////////////////////////////////////
 ///////////////////// Start of DOM Content /////////////////
 ////////////////////////////////////////////////////////////
-
 document.addEventListener('DOMContentLoaded', async function() {
+    clearLocalStorage();
+    let worker = new Worker('worker.js');
+
     const slider = document.getElementById('edgeWeightSlider');
     if (slider) {
         slider.addEventListener('input', () => {
@@ -370,44 +399,89 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const datasetSelector = document.getElementById('dataset-selector');
     datasetSelector.addEventListener('change', async function() {
-        const selectedDataset = datasetSelector.value;
+        const selectedDataset = datasetSelector.value.replace(' ', '_');
+        console.log(`Dataset selected: ${selectedDataset}`);
 
-        if (selectedDataset === 'Bacillus') {
+        if (selectedDataset) {
             // Show loading spinner and placeholders
             document.getElementById('loadingSpinner').style.display = 'block';
             document.getElementById('placeholder1').style.display = 'block';
             document.getElementById('placeholder2').style.display = 'block';
-            document.getElementById('placeholder3').style.display = 'block';
+            
+            const placeholder3 = document.getElementById('placeholder3');
+            if (placeholder3) {
+                placeholder3.style.display = 'block';
+            }
+            
             document.getElementById('placeholder4').style.display = 'block';
 
             try {
+                console.log('Clearing previous visualizations and local storage');
                 clearVisualizationScenes(); // Clears all scenes
-                await fetchAndCacheDatasets(); // Fetch and cache all datasets
+                clearLocalStorage(); // Clear local storage
 
-                updateNodeDropdown(nodeData3D); // Update the dropdown with the new data
-                createNodes(nodeData3D); // For 3D visualization
-                draw2DVisualization(nodeData2D); // For 2D visualization
+                // Clear IndexedDB
+                console.log('Clearing IndexedDB');
+                await clearIndexedDB(); // Clear IndexedDB
+                // Clear IndexedDB
+                console.log('Terminating and reinitializing worker');
+                worker.terminate(); // Terminate the previous worker
+                worker = new Worker('worker.js'); // Reinitialize the worker
 
-                // Use Web Worker for processing heatmap data
-                const worker = new Worker('worker.js');
-                worker.addEventListener('message', function(e) {
-                    const processedData = e.data;
-                    createHeatmap(processedData); // Render heatmap with processed data
-                });
-                worker.postMessage(heatmapData); // Send data to worker
+                console.log('Fetching and caching datasets');
+                await fetchAndCacheDatasets(selectedDataset); // Fetch and cache all datasets
 
-                setupParallelPlotData(edgeData); // Use cached parallel plot data
+                console.log('Datasets fetched, now updating visualizations');
+                console.log(`Node data 3D: ${nodeData3D ? 'loaded' : 'not loaded'}`);
+                console.log(`Node data 2D: ${nodeData2D ? 'loaded' : 'not loaded'}`);
+                console.log(`Edge data: ${edgeData ? 'loaded' : 'not loaded'}`);
+                console.log(`Heatmap data: ${heatmapData ? 'loaded' : 'not loaded'}`);
+
+                if (nodeData3D && nodeData2D && edgeData && heatmapData) {
+                    console.log('Updating node dropdown');
+                    updateNodeDropdown(nodeData3D); // Update the dropdown with the new data
+
+                    console.log('Creating nodes for 3D visualization');
+                    createNodes(nodeData3D); // For 3D visualization
+
+                    console.log('Drawing 2D visualization');
+                    draw2DVisualization(nodeData2D); // For 2D visualization
+
+                    console.log('Setting up web worker for heatmap data');
+                    worker.addEventListener('message', function(e) {
+                        if (e.data.error) {
+                            console.error('Error from worker:', e.data.error);
+                            return;
+                        }
+                        const processedData = e.data;
+                        console.log('Heatmap data processed by worker');
+                        createHeatmap(processedData); // Render heatmap with processed data
+                    });
+                    console.log('Sending heatmap data to worker');
+                    worker.postMessage(heatmapData); // Send data to worker
+
+                    console.log('Setting up parallel plot data');
+                    setupParallelPlotData(edgeData); // Use cached parallel plot data
+                } else {
+                    throw new Error('One or more datasets failed to load');
+                }
             } catch (error) {
                 console.error("Error loading data:", error);
             } finally {
+                console.log('Hiding loading spinner and placeholders');
                 // Hide loading spinner and placeholders
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('placeholder1').style.display = 'none';
                 document.getElementById('placeholder2').style.display = 'none';
-                document.getElementById('placeholder3').style.display = 'none';
+                
+                if (placeholder3) {
+                    placeholder3.style.display = 'none';
+                }
+                
                 document.getElementById('placeholder4').style.display = 'none';
             }
         } else {
+            console.log('No dataset selected, clearing existing visualizations');
             // Clear existing visualizations and hide placeholders
             clearVisualizationScenes();
             document.getElementById('placeholder1').style.display = 'none';
@@ -417,13 +491,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
+    console.log('Initializing event listeners');
     addDynamicEventListeners();  // Initialize all event listeners
     setupDropdownToggle();       // Setup dropdown toggle behavior if defined
     addOpacityControl();  // Initialize opacity control
 });
 
-
-
+////////////////////////////////////////////////////////////
+///////////////////////   End of DOM Content  /////////////////////////////////////
+////////////////////////////////////////////////////////////
 
 function updateNodeDropdown(nodes) {
     const nodeCheckboxesContainer = document.getElementById('node-checkboxes');
@@ -450,9 +526,7 @@ function updateNodeDropdown(nodes) {
 }
 
 
-////////////////////////////////////////////////////////////
-///////////////////////   End of DOM Content  /////////////////////////////////////
-////////////////////////////////////////////////////////////
+
 
 
 
@@ -523,9 +597,10 @@ let maxEdgeWeight = 0;  // Global variable to store the maximum edge weight
 
 function updateEdgeVisibility(value) {
     const selectedNodeIds = selectedNodeIdsForRange.length > 0 ? selectedNodeIdsForRange : Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked')).map(checkbox => checkbox.dataset.nodeId);
-    const selectedDataset = document.getElementById('dataset-selector').value;
-    const edgeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Edge_top10_interactions.json' : 'Other_Dataset_Edge.json';
-    const nodeDataPath = selectedDataset === 'Bacillus' ? 'Bacillus_Node_2D.json' : 'Other_Dataset_Node_data.json';
+    const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
+
+    const edgeDataPath = `${selectedDataset}_Edge_top10_interactions.json`;
+    const nodeDataPath = `${selectedDataset}_Node_2D.json`;
 
     const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
                                 .map(checkbox => parseInt(checkbox.value));
@@ -555,6 +630,7 @@ function updateEdgeVisibility(value) {
         updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow);
     });
 }
+
 
 
 
@@ -982,6 +1058,7 @@ function addOpacityControl() {
 function clearVisualizationScenes() {
     while(scene.children.length > 0) { 
         scene.remove(scene.children[0]); 
+        console.log('Clearing visualization scenes');
     }
 }
 ////////////////////////////////////////////////////////////

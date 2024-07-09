@@ -1,8 +1,14 @@
 self.addEventListener('message', function(e) {
-    const data = e.data;
-    // Perform data processing here
-    const processedData = processData(data);
-    self.postMessage(processedData);
+    try {
+        const data = e.data;
+        console.log('Worker received data:', data); // Log received data
+        const processedData = processData(data);
+        console.log('Worker processed data:', processedData); // Log processed data
+        self.postMessage(processedData);
+    } catch (error) {
+        console.error('Error in worker:', error);
+        self.postMessage({ error: error.message });
+    }
 });
 
 function processData(data) {
