@@ -1315,27 +1315,32 @@ function createHeatmap(data) {
 
     // Find the maximum value for both Source and Target in the data to set up dynamic domain
     const maxDataValue = d3.max(data, d => Math.max(d.Source, d.Target));
+    const halfMax = Math.floor(maxDataValue / 2);
 
-    const xScale = d3.scaleLinear()
-        .domain([0, maxDataValue])
+    // Create scales for the heatmap with reordered domains
+    const reorderedDomainX = d3.range(halfMax + 1, maxDataValue + 1).concat(d3.range(1, halfMax + 1));
+    const reorderedDomainY = reorderedDomainX.slice().reverse();
+
+    const xScale = d3.scaleBand()
+        .domain(reorderedDomainX)
         .range([0, width]);
 
-    const yScale = d3.scaleLinear()
-        .domain([0, maxDataValue])
+    const yScale = d3.scaleBand()
+        .domain(reorderedDomainY)
         .range([height, 0]);
 
     // Append the axes inside the main SVG (not the heatmapGroup)
     const xAxisGroup = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top + height})`)
-        .call(d3.axisBottom(xScale).tickFormat(d => `Bin ${d}`));
+        .call(d3.axisBottom(xScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
 
     const yAxisGroup = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`)
-        .call(d3.axisLeft(yScale).tickFormat(d => `Bin ${d}`));
+        .call(d3.axisLeft(yScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
 
     // Create heatmap squares without stroke to mimic the Python visualization
-    const gridSizeX = width / maxDataValue;
-    const gridSizeY = height / maxDataValue;
+    const gridSizeX = xScale.bandwidth();
+    const gridSizeY = yScale.bandwidth();
 
     heatmapGroup.selectAll('rect')
         .data(data)
@@ -1430,6 +1435,8 @@ function createHeatmap(data) {
 
 
 
+
+
 //////Function for Highlighting the Heatmap based on node selection/////
 // Set to track selected nodes
 let selectedNodes = new Set();
@@ -1509,108 +1516,116 @@ function updateHeatmapHighlights(svg, isRangeHighlight = false) {
     //////////////////////////////////////////////////////////////////////////////////
     ////////////            3D Visualization Setup      /////////////////////////////
     // Setup Three.js scene, camera, renderer, and controls
-        scene = new THREE.Scene();
+// Setup Three.js scene, camera, renderer, and controls
+// Setup Three.js scene, camera, renderer, and controls
 
-        const visualizationContainer = document.getElementById('visualization1');
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setClearColor(0x000000, 0); // Transparent background
-        
-        const margin = { top: 10, right: 10, bottom: 30, left: 10 }; // Adjust margin values as needed
-        
-        renderer.setSize(visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
-        console.log("Renderer dimensions:", visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
-        visualizationContainer.appendChild(renderer.domElement);
-        
-        camera = new THREE.PerspectiveCamera(45, (visualizationContainer.clientWidth - margin.left - margin.right) / (visualizationContainer.clientHeight - margin.top - margin.bottom), 0.1, 1000);
-        camera.position.set(0, 0, 100); // Move the camera further away
-        camera.lookAt(new THREE.Vector3(0, 0, 0));
-        camera.updateProjectionMatrix();
-        
-        var ambientLight = new THREE.AmbientLight(0xaaaaaa);
-        scene.add(ambientLight);
-        
-        var light = new THREE.PointLight(0xffffff, 1);
-        light.position.set(50, 50, 50);
-        scene.add(light);
-        
-        controls = new OrbitControls(camera, renderer.domElement);
-        
-        function onWindowResize() {
-            camera.aspect = (visualizationContainer.clientWidth - margin.left - margin.right) / (visualizationContainer.clientHeight - margin.top - margin.bottom);
-            camera.updateProjectionMatrix();
-            renderer.setSize(visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
-        }
-        
-        window.addEventListener('resize', onWindowResize, false);
-        onWindowResize();  // Call initially to set size.
-        
-        scene.background = new THREE.Color(0xf0f0f0);
-        
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update(); // Needed if controls.enableDamping or controls.autoRotate are set to true
-            renderer.render(scene, camera);
-        }
-        animate();
-    
+scene = new THREE.Scene();
 
-    //For Creating Nodes for 3d Visualization
-    function createNodes(nodeData) {
-        // Clear existing nodes in the scene
-        while(scene.children.length > 0) { 
-            scene.remove(scene.children[0]); 
-        }
-    
-        // Sort nodes by numeric ID
-        const sortedData = nodeData.slice().sort((a, b) => parseInt(a.id.replace(/[^\d]/g, '')) - parseInt(b.id.replace(/[^\d]/g, '')));
-        const startNode = sortedData[0];
-        const endNode = sortedData[sortedData.length - 1];
-    
-        nodeData.forEach(node => {
-            const numericId = node.id.replace(/[^\d]/g, ''); // Assumes node.id is like 'Node1'
-            const color = getColorForChID(String(node.ChID));
-    
-            let nodeMaterial;
-    
-            // Set up the material with different colors for start and end nodes
-            if (node === startNode) {
-                nodeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x00FF00, // Green color for start node
-                    emissive: 0x00FF00, // Same color for emissive to create a glow effect
-                    emissiveIntensity: 1,
-                    roughness: 0.1,
-                    metalness: 0.5
-                });
-            } else if (node === endNode) {
-                nodeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x0000FF, // Blue color for end node
-                    emissive: 0x0000FF,
-                    emissiveIntensity: 1,
-                    roughness: 0.1,
-                    metalness: 0.5
-                });
-            } else {
-                nodeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0xFF0000, // Red color for other nodes
-                    emissive: 0xFF0000,
-                    emissiveIntensity: 1,
-                    roughness: 0.1,
-                    metalness: 0.5
-                });
-            }
-    
-            // Reduce the node size
-            const geometry = new THREE.SphereGeometry(0.5, 32, 32); // Node radius set to 0.5
-            const sphere = new THREE.Mesh(geometry, nodeMaterial);
-            sphere.position.set(node.x * 0.1, node.y * 0.1, node.z * 0.1);
-            sphere.name = numericId;
-            scene.add(sphere);
-        });
-    
-        renderer.render(scene, camera);
+const visualizationContainer = document.getElementById('visualization1');
+renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0); // Transparent background
+
+const margin = { top: 10, right: 10, bottom: 30, left: 10 }; // Adjust margin values as needed
+
+renderer.setSize(visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
+console.log("Renderer dimensions:", visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
+visualizationContainer.appendChild(renderer.domElement);
+
+camera = new THREE.PerspectiveCamera(45, (visualizationContainer.clientWidth - margin.left - margin.right) / (visualizationContainer.clientHeight - margin.top - margin.bottom), 0.1, 1000);
+camera.position.set(0, 0, 100); // Move the camera further away
+camera.lookAt(new THREE.Vector3(0, 0, 0));
+camera.updateProjectionMatrix();
+
+const ambientLight = new THREE.AmbientLight(0xaaaaaa);
+scene.add(ambientLight);
+
+const light = new THREE.PointLight(0xffffff, 1);
+light.position.set(50, 50, 50);
+scene.add(light);
+
+controls = new OrbitControls(camera, renderer.domElement);
+controls.enablePan = true; // Enable panning
+controls.enableZoom = true; // Enable zooming
+controls.zoomSpeed = 1.2; // Adjust the zoom speed
+controls.panSpeed = 1.0; // Adjust the pan speed
+controls.enableDamping = true; // Enable damping for smoother movement
+controls.dampingFactor = 0.03; // Adjust damping factor
+
+function onWindowResize() {
+    camera.aspect = (visualizationContainer.clientWidth - margin.left - margin.right) / (visualizationContainer.clientHeight - margin.top - margin.bottom);
+    camera.updateProjectionMatrix();
+    renderer.setSize(visualizationContainer.clientWidth - margin.left - margin.right, visualizationContainer.clientHeight - margin.top - margin.bottom);
+}
+
+window.addEventListener('resize', onWindowResize, false);
+onWindowResize();  // Call initially to set size.
+
+scene.background = new THREE.Color(0xf0f0f0);
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update(); // Needed if controls.enableDamping or controls.autoRotate are set to true
+    renderer.render(scene, camera);
+}
+animate();
+
+// For Creating Nodes for 3d Visualization
+function createNodes(nodeData) {
+    // Clear existing nodes in the scene
+    while(scene.children.length > 0) { 
+        scene.remove(scene.children[0]); 
     }
-    
+
+    // Sort nodes by numeric ID
+    const sortedData = nodeData.slice().sort((a, b) => parseInt(a.id.replace(/[^\d]/g, '')) - parseInt(b.id.replace(/[^\d]/g, '')));
+    const startNode = sortedData[0];
+    const endNode = sortedData[sortedData.length - 1];
+
+    nodeData.forEach(node => {
+        const numericId = node.id.replace(/[^\d]/g, ''); // Assumes node.id is like 'Node1'
+        const color = getColorForChID(String(node.ChID));
+
+        let nodeMaterial;
+
+        // Set up the material with different colors for start and end nodes
+        if (node === startNode) {
+            nodeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x00FF00, // Green color for start node
+                emissive: 0x00FF00, // Same color for emissive to create a glow effect
+                emissiveIntensity: 1,
+                roughness: 0.1,
+                metalness: 0.5
+            });
+        } else if (node === endNode) {
+            nodeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0000FF, // Blue color for end node
+                emissive: 0x0000FF,
+                emissiveIntensity: 1,
+                roughness: 0.1,
+                metalness: 0.5
+            });
+        } else {
+            nodeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xFF0000, // Red color for other nodes
+                emissive: 0xFF0000,
+                emissiveIntensity: 1,
+                roughness: 0.1,
+                metalness: 0.5
+            });
+        }
+
+        // Reduce the node size
+        const geometry = new THREE.SphereGeometry(0.5, 32, 32); // Node radius set to 0.5
+        const sphere = new THREE.Mesh(geometry, nodeMaterial);
+        sphere.position.set(node.x * 0.1, node.y * 0.1, node.z * 0.1);
+        sphere.name = numericId;
+        scene.add(sphere);
+    });
+
+    renderer.render(scene, camera);
+}
+
     
     //Updating Tooltip for 3d Visualization
     let lastHighlightedNode = null;
