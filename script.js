@@ -636,7 +636,7 @@ function updateEdgeVisibility(value) {
 
 
 
-// Function for updating the parallel plot ///
+// Function for updating the parallel plot /////
 
 function updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow) {
     fetch(edgeDataPath)
@@ -646,7 +646,7 @@ function updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow) 
             filteredData.sort((a, b) => b.Weight - a.Weight); // Sort by weight descending
             const edgesToShow = filteredData.slice(0, numberOfEdgesToShow); // Take top N edges based on slider
 
-            // If no SVG exists, initialize it
+            // If no SVG exists, we need to initialize it
             const allNodes = {
                 sources: [...new Set(data.map(d => d.Source))],
                 targets: [...new Set(data.map(d => d.Target))]
