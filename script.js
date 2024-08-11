@@ -1271,9 +1271,16 @@ function preprocessDataForHeatmap(rawData) {
 function createHeatmap(data) {
     const tooltip = d3.select("#tooltipHeatmap");
     const container = d3.select('#visualization3');
-    const margin = { top: 50, right: 50, bottom: 50, left: 50 };
-    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = container.node().getBoundingClientRect().height - margin.top - margin.bottom;
+    const margin = { top: 0, right: 100, bottom: 100, left: 50 }; // Increased right margin for better legend positioning
+    const containerWidth = container.node().getBoundingClientRect().width;
+    const containerHeight = container.node().getBoundingClientRect().height;
+    const size = Math.min(containerWidth - margin.left - margin.right, containerHeight - margin.top - margin.bottom); // Make it square
+    const width = size;
+    const height = size;
+
+    // Calculate the offset to center the heatmap and color map
+    const offsetX = (containerWidth - width - margin.right) / 2;
+    const offsetY = (containerHeight - height) / 2;
 
     // Clear any existing content in the container
     container.selectAll('*').remove();
@@ -1284,7 +1291,7 @@ function createHeatmap(data) {
 
     // Define a custom color interpolator that will make the colors darker
     const colorInterpolator = t => {
-        const start = 0.1; // Starting at 10% will make the colors generally darker
+        const start = 0.01; // Starting at 1% will make the colors generally darker
         return d3.interpolateReds(start + t * (1 - start));
     };
 
@@ -1294,8 +1301,8 @@ function createHeatmap(data) {
 
     // Create an SVG element inside the container for the heatmap
     const svg = container.append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom);
+        .attr('width', containerWidth)
+        .attr('height', containerHeight);
 
     // Define a clip path to confine the heatmap within the axes
     svg.append('defs').append('clipPath')
@@ -1307,7 +1314,7 @@ function createHeatmap(data) {
         .attr('y', 0);
 
     const heatmapGroup = svg.append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`)
+        .attr('transform', `translate(${offsetX + margin.left},${offsetY + margin.top})`)
         .attr('clip-path', 'url(#clip)');
 
     // Initial log of the transformation values
@@ -1331,11 +1338,11 @@ function createHeatmap(data) {
 
     // Append the axes inside the main SVG (not the heatmapGroup)
     const xAxisGroup = svg.append("g")
-        .attr("transform", `translate(${margin.left},${margin.top + height})`)
+        .attr("transform", `translate(${offsetX + margin.left},${offsetY + margin.top + height})`)
         .call(d3.axisBottom(xScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
 
     const yAxisGroup = svg.append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`)
+        .attr("transform", `translate(${offsetX + margin.left},${offsetY + margin.top})`)
         .call(d3.axisLeft(yScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
 
     // Create heatmap squares without stroke to mimic the Python visualization
@@ -1365,8 +1372,61 @@ function createHeatmap(data) {
 
     svg.append("g")
         .attr("class", "brush")
-        .attr('transform', `translate(${margin.left},${margin.top})`) // Adjust brush position
+        .attr('transform', `translate(${offsetX + margin.left},${offsetY + margin.top})`) // Adjust brush position
         .call(brush);
+
+    // Create color map legend
+    const legendHeight = height;
+    const legendWidth = 20;
+
+    const legendGroup = svg.append('g')
+        .attr('transform', `translate(${offsetX + margin.left + width + 40},${offsetY + margin.top})`); // Adjusted to move legend labels further right
+
+    const legendScale = d3.scaleLinear()
+        .domain([minWeight, maxWeight])
+        .range([legendHeight, 0]);
+
+    const legendAxis = d3.axisRight(legendScale).ticks(6); // Fewer ticks for better spacing
+
+    const legend = legendGroup.append("g")
+    .attr("class", "legend axis")
+    .attr("transform", "translate(30, 0)")  // Move the legend labels 30px to the right
+    .call(legendAxis);
+
+
+    const legendGradient = legendGroup.append("defs")
+        .append("linearGradient")
+        .attr("id", "legend-gradient")
+        .attr("x1", "0%")
+        .attr("y1", "100%")
+        .attr("x2", "0%")
+        .attr("y2", "0%");
+
+    legendGradient.append("stop")
+        .attr("offset", "0%")
+        .attr("stop-color", colorScale(minWeight));
+
+    legendGradient.append("stop")
+        .attr("offset", "100%")
+        .attr("stop-color", colorScale(maxWeight));
+
+        legendGroup.append("rect")
+        .attr("width", legendWidth)
+        .attr("height", legendHeight)
+        .style("fill", "url(#legend-gradient)")
+        .on('mousemove', function (event) {
+            const legendValue = legendScale.invert(d3.pointer(event)[1]);
+            const colorValue = colorScale(legendValue);  // Get the color value
+    
+            tooltip.style('display', 'block')
+                .style('left', `${event.pageX + 10}px`)
+                .style('top', `${event.pageY + 10}px`)
+                .html(`Weight: ${legendValue.toFixed(6)}<br>Color: <span style="display:inline-block; width:12px; height:12px; background-color:${colorValue}; border-radius:50%;"></span>`);
+        })
+        .on('mouseout', function () {
+            tooltip.style('display', 'none');
+        });
+    
 
     function brushStart(event) {
         if (event.sourceEvent.type !== 'end') {
@@ -1432,6 +1492,7 @@ function createHeatmap(data) {
         visualizeRangeButton.dispatchEvent(clickEvent);
     }
 }
+
 
 
 
@@ -1572,10 +1633,12 @@ animate();
 
 // For Creating Nodes for 3d Visualization
 function createNodes(nodeData) {
-    // Clear existing nodes in the scene
-    while(scene.children.length > 0) { 
+    // Clear existing nodes and labels in the scene
+    while (scene.children.length > 0) { 
         scene.remove(scene.children[0]); 
     }
+
+    const labelNodeIds = [1, 50, 100, 150, 200, 250, 300, 350, 400]; // IDs of nodes to label
 
     // Sort nodes by numeric ID
     const sortedData = nodeData.slice().sort((a, b) => parseInt(a.id.replace(/[^\d]/g, '')) - parseInt(b.id.replace(/[^\d]/g, '')));
@@ -1615,16 +1678,40 @@ function createNodes(nodeData) {
             });
         }
 
-        // Reduce the node size
-        const geometry = new THREE.SphereGeometry(0.5, 32, 32); // Node radius set to 0.5
+        // Reduce the node size to half
+        const geometry = new THREE.SphereGeometry(0.35, 32, 32); // Node radius set to 0.25
         const sphere = new THREE.Mesh(geometry, nodeMaterial);
         sphere.position.set(node.x * 0.1, node.y * 0.1, node.z * 0.1);
         sphere.name = numericId;
         scene.add(sphere);
+
+        // Add labels for specific nodes
+        if (labelNodeIds.includes(parseInt(numericId))) {
+            const label = createLabelSprite(`Node ${numericId}`);
+            label.position.set(node.x * 0.1, node.y * 0.1, node.z * 0.1);
+            scene.add(label);
+        }
     });
 
     renderer.render(scene, camera);
 }
+
+// Helper function to create a text sprite for labels
+function createLabelSprite(text) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    context.font = 'Bold 50px Arial';
+    context.fillStyle = 'rgba(0, 0, 0, 1.0)';
+    context.fillText(text, 0, 50);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(5, 2.5, 1.0); // Scale the sprite appropriately
+
+    return sprite;
+}
+
 
     
     //Updating Tooltip for 3d Visualization
