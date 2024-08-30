@@ -131,28 +131,51 @@ function clearLocalStorage() {
 // Function to clear IndexedDB
 function clearIndexedDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('myDatabase');
+        // Reopen the database to force any open connections to close
+        const openRequest = indexedDB.open('myDatabase');
 
-        request.onsuccess = () => {
-            console.log("IndexedDB cleared successfully");
-            resolve();
+        openRequest.onupgradeneeded = (event) => {
+            // This triggers a version change, causing other open connections to close
+            console.log("Forcing connections to close by triggering onupgradeneeded.");
         };
 
-        request.onerror = (event) => {
-            console.error("Error clearing IndexedDB:", event.target.error);
+        openRequest.onsuccess = (event) => {
+            const db = event.target.result;
+
+            // Close this connection immediately
+            db.close();
+
+            // Now proceed to delete the database
+            const request = indexedDB.deleteDatabase('myDatabase');
+
+            request.onsuccess = () => {
+                console.log("IndexedDB cleared successfully");
+                resolve();
+            };
+
+            request.onerror = (event) => {
+                console.error("Error clearing IndexedDB:", event.target.error);
+                reject(event.target.error);
+            };
+
+            request.onblocked = () => {
+                console.warn("Clear IndexedDB operation blocked. Waiting for all connections to close.");
+                // Optionally, retry logic can be added here if desired.
+            };
+
+            request.onupgradeneeded = (event) => {
+                console.log("Upgrade needed for IndexedDB");
+            };
+        };
+
+        openRequest.onerror = (event) => {
+            console.error("Error opening database:", event.target.error);
             reject(event.target.error);
-        };
-
-        request.onblocked = () => {
-            console.warn("Clear IndexedDB operation blocked. Waiting for all connections to close.");
-            // Provide a mechanism to handle the blocked state, possibly retrying or providing feedback.
-        };
-
-        request.onupgradeneeded = (event) => {
-            console.log("Upgrade needed for IndexedDB");
         };
     });
 }
+
+
 
 
 // Call this function when you need to clear the cache
@@ -1020,7 +1043,7 @@ function setupSVGandAxes(allNodes) {
     const ticks = combinedNodes.filter((d, i) => i % tickInterval === 0);
 
     // Call the function to draw gene density lines first
-    drawGeneDensityLinesParallelPlot(svg, width, height, margin, combinedNodes, sourceScale, targetScale);
+    //drawGeneDensityLinesParallelPlot(svg, width, height, margin, combinedNodes, sourceScale, targetScale);
 
     // Move the left axis further left
     svg.append("g")
@@ -1511,7 +1534,7 @@ function createHeatmap(data) {
         .style('stroke-width', 0); // No stroke for a seamless appearance
 
     // Call the function to draw gene density lines
-    drawGeneDensityLines(svg, width, height, margin, xScale, yScale);
+    //drawGeneDensityLines(svg, width, height, margin, xScale, yScale);
 
     // Define brush for rectangle selection
     const brush = d3.brush()
