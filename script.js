@@ -144,11 +144,16 @@ function clearIndexedDB() {
         };
 
         request.onblocked = () => {
-            console.warn("Clear IndexedDB operation blocked");
-            resolve();
+            console.warn("Clear IndexedDB operation blocked. Waiting for all connections to close.");
+            // Provide a mechanism to handle the blocked state, possibly retrying or providing feedback.
+        };
+
+        request.onupgradeneeded = (event) => {
+            console.log("Upgrade needed for IndexedDB");
         };
     });
 }
+
 
 // Call this function when you need to clear the cache
 // clearLocalStorage();
@@ -387,7 +392,6 @@ window.addEventListener('resize', () => {
 ///////////////////// Start of DOM Content /////////////////
 ////////////////////////////////////////////////////////////
 document.addEventListener('DOMContentLoaded', async function() {
-    clearLocalStorage();
     let worker = new Worker('worker.js');
 
     const slider = document.getElementById('edgeWeightSlider');
@@ -403,6 +407,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.log(`Dataset selected: ${selectedDataset}`);
 
         if (selectedDataset) {
+            // Clear previous data and state
+            resetVisualizations();
+
+            // Update images based on selected dataset
+            updateImagesForDataset(selectedDataset);
+
             // Show loading spinner and placeholders
             document.getElementById('loadingSpinner').style.display = 'block';
             document.getElementById('placeholder1').style.display = 'block';
@@ -423,7 +433,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 // Clear IndexedDB
                 console.log('Clearing IndexedDB');
                 await clearIndexedDB(); // Clear IndexedDB
-                // Clear IndexedDB
+
                 console.log('Terminating and reinitializing worker');
                 worker.terminate(); // Terminate the previous worker
                 worker = new Worker('worker.js'); // Reinitialize the worker
@@ -497,6 +507,83 @@ document.addEventListener('DOMContentLoaded', async function() {
     addOpacityControl();  // Initialize opacity control
 });
 
+// Function to update images based on the selected dataset
+function updateImagesForDataset(selectedDataset) {
+    let imagePaths = {};
+
+    // Define image paths based on the selected dataset
+    switch (selectedDataset) {
+        case 'Bacillus_30C':
+            imagePaths = {
+                visualization1: '1_1.JPG',
+                visualization2: '1_2.JPG',
+                visualization3: '1_3.JPG',
+                visualization4: '2_4.JPG',
+            };
+            break;
+        case 'Bacillus_42C45M':
+            imagePaths = {
+                visualization1: '2_1.JPG',
+                visualization2: '2_2.JPG',
+                visualization3: '2_3.JPG',
+                visualization4: '2_4.JPG',
+            };
+            break;
+        case 'Bacillus_42c120M':
+            imagePaths = {
+                visualization1: '3_1.JPG',
+                visualization2: '3_2.JPG',
+                visualization3: '3_3.JPG',
+                visualization4: '2_4.JPG',
+            };
+            break;
+        default:
+            imagePaths = {
+                visualization1: '3_1.JPG',
+                visualization2: '3_2.JPG',
+                visualization3: '3_3.JPG',
+                visualization4: '2_4.JPG',
+            };
+            break;
+    }
+
+    // Update the image sources for each visualization with a check to ensure the element exists
+    const img1 = document.querySelector('#placeholder1 img');
+    const img2 = document.querySelector('#placeholder2 img');
+    const img3 = document.querySelector('#placeholder3 img');
+    const img4 = document.querySelector('#placeholder4 img');
+
+    if (img1) {
+        img1.src = imagePaths.visualization1;
+        console.log('Placeholder 1 updated to', imagePaths.visualization1);
+    }
+    if (img2) {
+        img2.src = imagePaths.visualization2;
+        console.log('Placeholder 2 updated to', imagePaths.visualization2);
+    }
+    if (img3) {
+        img3.src = imagePaths.visualization3;
+        console.log('Placeholder 3 updated to', imagePaths.visualization3);
+    }
+    if (img4) {
+        img4.src = imagePaths.visualization4;
+        console.log('Placeholder 4 updated to', imagePaths.visualization4);
+    }
+}
+
+
+// Function to reset visualizations
+function resetVisualizations() {
+    // Clear all visualizations
+    clearVisualizationScenes();
+
+    // Reset other necessary states or data
+    clearLocalStorage();
+    clearIndexedDB();
+}
+
+
+
 ////////////////////////////////////////////////////////////
 ///////////////////////   End of DOM Content  /////////////////////////////////////
 ////////////////////////////////////////////////////////////
@@ -514,6 +601,11 @@ function updateNodeDropdown(nodes) {
         // Extract only the numeric part of the node ID
         const numericId = node.id.replace(/^\D+/g, ''); // Removes non-digit characters at the start
         checkbox.dataset.nodeId = numericId; // Store only the numeric ID in data attribute
+
+        // Check if the numericId is within the specified interval
+        if (numericId >= 1 && numericId <= 401 && (numericId - 1) % 10 === 0) {
+            checkbox.checked = true;
+        }
 
         const label = document.createElement('label');
         label.htmlFor = `node${index}`;
@@ -571,54 +663,60 @@ function filterTopWeightedEdges(edges, selectedNodeIds) {
 ///////////////////////////////////
 //Function for Handling Filtered edges////
 
+// Function for Handling Filtered Edges
 function fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, callback) {
     fetch(edgeDataPath)
         .then(response => response.json())
         .then(allEdges => {
-            let filteredEdges = allEdges.filter(edge => selectedNodeIds.includes(String(edge.Source)) || selectedNodeIds.includes(String(edge.Target)));
+            // Filter edges to include only those where the source node is in selectedNodeIds
+            let filteredEdges = allEdges.filter(edge => selectedNodeIds.includes(String(edge.Source)));
+
+            // Apply interaction filters if provided
             if (interactionFilters && interactionFilters.length > 0) {
                 filteredEdges = filteredEdges.filter(edge => interactionFilters.includes(edge.Interaction));
             }
+
             callback(filteredEdges);
         })
         .catch(error => console.error("Error fetching and filtering edge data:", error));
 }
 
-
-
-    
-////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////
-
-
-///////////////////////////////////
-///Slider Control for Edge Visibility in 3d and 2d vis///
+// Slider Control for Edge Visibility in 3D and 2D Visualization
 let maxEdgeWeight = 0;  // Global variable to store the maximum edge weight
 
 function updateEdgeVisibility(value) {
-    const selectedNodeIds = selectedNodeIdsForRange.length > 0 ? selectedNodeIdsForRange : Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked')).map(checkbox => checkbox.dataset.nodeId);
-    const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
+    const selectedNodeIds = selectedNodeIdsForRange.length > 0 
+        ? selectedNodeIdsForRange 
+        : Array.from(document.querySelectorAll('#node-checkboxes input[type="checkbox"]:checked'))
+            .map(checkbox => checkbox.dataset.nodeId);
 
+    const selectedDataset = document.getElementById('dataset-selector').value.replace(/ /g, '_');
     const edgeDataPath = `${selectedDataset}_Edge_top10_interactions.json`;
     const nodeDataPath = `${selectedDataset}_Node_2D.json`;
 
     const interactionFilters = Array.from(document.querySelectorAll('input[name="interaction"]:checked'))
                                 .map(checkbox => parseInt(checkbox.value));
 
+    // Fetch and filter edge data based on selected nodes and interaction filters
     fetchAndFilterEdgeData(edgeDataPath, selectedNodeIds, interactionFilters, function(filteredEdges) {
+        // Sort edges by weight in descending order
+        filteredEdges.sort((a, b) => b.Weight - a.Weight);
+
         // Calculate the number of edges to show based on the slider percentage
         const numberOfEdgesToShow = Math.ceil(filteredEdges.length * (value / 100));
-        document.getElementById('edgeWeightValue').innerText = `${value}% (${numberOfEdgesToShow} edges)`;
+        const edgesToShow = filteredEdges.slice(0, numberOfEdgesToShow);
+
+        document.getElementById('edgeWeightValue').innerText = `${value}% (${edgesToShow.length} edges)`;
         console.log(`Slider value: ${value}% - Showing top ${numberOfEdgesToShow} weighted edges.`);
 
-        // Sort edges by weight in descending order and take the top N based on the slider
-        filteredEdges.sort((a, b) => b.Weight - a.Weight);
-        const edgesToShow = filteredEdges.slice(0, numberOfEdgesToShow);
-        console.log(`Edges to show after filtering: ${edgesToShow.length}`);
+        // Log edges to be shown in 3D
+        console.log("3D Visualization Edges:", edgesToShow);
 
+        // Clear and create 3D edges
         clearEdges3D();
         createEdges3D(edgesToShow);
 
+        // Fetch node data and draw 2D edges
         const canvas = document.getElementById('canvas2D');
         const context = canvas.getContext('2d');
         fetch(nodeDataPath).then(response => response.json()).then(nodeData => {
@@ -626,27 +724,50 @@ function updateEdgeVisibility(value) {
             drawEdges2D(edgesToShow, context);
         });
 
-        // Update the parallel plot
-        updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow);
+        // Update the parallel plot with the filtered edges
+        updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow, edgesToShow);
     });
 }
 
-
-
-
-
-
-// Function for updating the parallel plot /////
-
-function updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow) {
+// Function for Updating the Parallel Plot
+function updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow, edgesFrom3D = []) {
     fetch(edgeDataPath)
         .then(response => response.json())
         .then(data => {
-            const filteredData = data.filter(d => selectedNodeIds.includes(d.Source.toString()));
-            filteredData.sort((a, b) => b.Weight - a.Weight); // Sort by weight descending
-            const edgesToShow = filteredData.slice(0, numberOfEdgesToShow); // Take top N edges based on slider
+            console.log("Fetched data for Parallel Plot:", data);
 
-            // If no SVG exists, we need to initialize it
+            // Filter edges based on selected source nodes
+            const filteredEdges = data.filter(d => selectedNodeIds.includes(d.Source.toString()));
+            const edgesToShow = getTopEdges(filteredEdges, numberOfEdgesToShow);
+
+            console.log("Edges passed from 3D Visualization:", edgesFrom3D);
+            console.log("Edges filtered for Parallel Plot:", edgesToShow);
+
+            // Check for discrepancies between 3D and parallel plot edges
+            const discrepancy = edgesFrom3D.filter(edge3D => !edgesToShow.some(edge => 
+                edge.Source === edge3D.Source && 
+                edge.Target === edge3D.Target && 
+                edge.Weight === edge3D.Weight
+            ));
+            console.log("Discrepancy between 3D and Parallel Plot Edges:", discrepancy);
+
+            // Log the first discrepancy if there is one
+            if (discrepancy.length > 0) {
+                console.log("First discrepancy details:", {
+                    EdgeIn3D: discrepancy[0],
+                    CorrespondingEdgeInParallelPlot: edgesToShow.find(edge => 
+                        edge.Source === discrepancy[0].Source && 
+                        edge.Target === discrepancy[0].Target)
+                });
+            }
+
+            // If there are no edges to show, exit early
+            if (edgesToShow.length === 0) {
+                console.warn("No edges to display in Parallel Plot.");
+                return;
+            }
+
+            // Set up the parallel plot visualization
             const allNodes = {
                 sources: [...new Set(data.map(d => d.Source))],
                 targets: [...new Set(data.map(d => d.Target))]
@@ -657,6 +778,13 @@ function updateParallelPlot(edgeDataPath, selectedNodeIds, numberOfEdgesToShow) 
         })
         .catch(error => console.error("Error updating parallel plot:", error));
 }
+
+// Function for getting top edges based on weight
+function getTopEdges(edges, numberOfEdgesToShow) {
+    edges.sort((a, b) => b.Weight - a.Weight);
+    return edges.slice(0, numberOfEdgesToShow);
+}
+
 
 
 
@@ -674,24 +802,44 @@ function clearEdges3D() {
 
 // Function for drawing edges of selected nodes for 3D visualization
 function createEdges3D(edgeData) {
-    // Use a light grey color (e.g., #CCCCCC) and set transparency
-    const lineMaterial = new THREE.LineBasicMaterial({
-        color: 0xCCCCCC,
-        transparent: true,
-        opacity: 0.5
-    });
+    // Identify the maximum and minimum weights
+    const maxWeight = Math.max(...edgeData.map(edge => edge.Weight));
+    const minWeight = Math.min(...edgeData.map(edge => edge.Weight));
+
+    // Avoid dividing by a very small number by ensuring there's a minimum range
+    const weightRange = maxWeight === minWeight ? 1 : (maxWeight - minWeight);
 
     edgeData.forEach(edge => {
         const sourceNode = scene.getObjectByName(String(edge.Source));
         const targetNode = scene.getObjectByName(String(edge.Target));
 
         if (sourceNode && targetNode) {
+            // Normalize the weight to a range from 0 to 1, with a small adjustment to avoid extremes
+            const normalizedWeight = (edge.Weight - minWeight) / weightRange;
+
+            // Calculate blue shades: light blue (e.g., #ADD8E6) to dark blue (e.g., #00008B)
+            const startColor = new THREE.Color(0xADD8E6); // Light Blue
+            const endColor = new THREE.Color(0x00008B);   // Dark Blue
+
+            // Interpolate between light blue and dark blue based on the normalized weight
+            const edgeColor = startColor.clone().lerp(endColor, normalizedWeight);
+
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                transparent: true,
+                opacity: 1.0
+            });
+
             const points = [sourceNode.position.clone(), targetNode.position.clone()];
             const geometry = new THREE.BufferGeometry().setFromPoints(points);
             const line = new THREE.Line(geometry, lineMaterial);
+
+            // Store the source, target, and weight in userData
+            line.userData = { source: edge.Source, target: edge.Target, weight: edge.Weight };
+
             scene.add(line);
-            edges3D.push(line);  // Push edge into edges3D array
-            console.log(`Drawing edge between ${edge.Source} and ${edge.Target}`);
+            edges3D.push(line);
+            console.log(`Drawing edge between ${edge.Source} and ${edge.Target} with normalized weight: ${normalizedWeight}`);
         } else {
             console.log(`Failed to find nodes for edge between ${edge.Source} and ${edge.Target}`);
         }
@@ -699,6 +847,8 @@ function createEdges3D(edgeData) {
 
     renderer.render(scene, camera);
 }
+
+
 
 
     
