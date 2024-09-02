@@ -1510,13 +1510,20 @@ function createHeatmap(data) {
         .range([height, 0]);
 
     // Append the axes inside the main SVG (not the heatmapGroup)
+// Modify the x-axis creation
     const xAxisGroup = svg.append("g")
         .attr("transform", `translate(${offsetX + margin.left},${offsetY + margin.top + height})`)
-        .call(d3.axisBottom(xScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
+        .call(d3.axisBottom(xScale)
+            .tickValues(d3.range(50, maxDataValue + 1, 50)) // Show labels at intervals of 50
+            .tickFormat(d => `Bin ${d}`));
 
+    // Modify the y-axis creation
     const yAxisGroup = svg.append("g")
         .attr("transform", `translate(${offsetX + margin.left},${offsetY + margin.top})`)
-        .call(d3.axisLeft(yScale).tickValues(d3.range(0, maxDataValue + 1, 50)).tickFormat(d => `Bin ${d}`));
+        .call(d3.axisLeft(yScale)
+            .tickValues(d3.range(50, maxDataValue + 1, 50)) // Show labels at intervals of 50
+            .tickFormat(d => `Bin ${d}`));
+
 
     // Create heatmap squares without stroke to mimic the Python visualization
     const gridSizeX = xScale.bandwidth();
@@ -1782,8 +1789,40 @@ controls.enablePan = true; // Enable panning
 controls.enableZoom = true; // Enable zooming
 controls.zoomSpeed = 1.2; // Adjust the zoom speed
 controls.panSpeed = 1.0; // Adjust the pan speed
-controls.enableDamping = true; // Enable damping for smoother movement
-controls.dampingFactor = 0.03; // Adjust damping factor
+controls.enableDamping = false; // Enable damping for smoother movement
+controls.dampingFactor = 0.0003; // Adjust damping factor
+
+
+//Axis Helper for showing x,y,z axes in 3d vis
+//after initializing the scene and renderer
+// Create a small scene for the axes helper
+//It will show a red line for the x-axis, a green line for the y-axis, and a blue line for the z-axis.
+const axesScene = new THREE.Scene();
+const axesHelper = new THREE.AxesHelper(2); // Size of the axes helper
+axesScene.add(axesHelper);
+
+// Create a smaller camera for the axes helper
+const axesCamera = new THREE.PerspectiveCamera(
+    50, // Field of view
+    window.innerWidth / window.innerHeight, // Aspect ratio
+    0.1, // Near clipping plane
+    1000 // Far clipping plane
+);
+axesCamera.up = camera.up; // Use the same up direction as the main camera
+
+// Create a smaller renderer for the axes helper
+const axesRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+axesRenderer.setSize(100, 100); // Size of the axes helper renderer
+axesRenderer.setClearColor(0x000000, 0); // Transparent background
+
+// Position the axes renderer within the visualization container
+axesRenderer.domElement.style.position = 'absolute';
+axesRenderer.domElement.style.bottom = '10px'; // Position at the bottom
+axesRenderer.domElement.style.left = '10px'; // Position at the left
+
+// Append the axes renderer to the visualization container
+visualizationContainer.appendChild(axesRenderer.domElement);
+
 
 function onWindowResize() {
     camera.aspect = (visualizationContainer.clientWidth - margin.left - margin.right) / (visualizationContainer.clientHeight - margin.top - margin.bottom);
@@ -1799,8 +1838,20 @@ scene.background = new THREE.Color(0xf0f0f0);
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
+
     controls.update(); // Needed if controls.enableDamping or controls.autoRotate are set to true
+
+    // Render the main scene
     renderer.render(scene, camera);
+
+    // Update the axes camera to match the main camera's orientation
+    axesCamera.position.copy(camera.position);
+    axesCamera.position.sub(controls.target); // Translate to the camera's position relative to the target
+    axesCamera.position.setLength(5); // Set the distance of the camera from the origin
+    axesCamera.lookAt(axesScene.position); // Look at the origin (0,0,0) of the axesScene
+
+    // Render the axes helper scene
+    axesRenderer.render(axesScene, axesCamera);
 }
 animate();
 
@@ -1860,7 +1911,7 @@ function createNodes(nodeData) {
 
         // Add labels for specific nodes
         if (labelNodeIds.includes(parseInt(numericId))) {
-            const label = createLabelSprite(`Node ${numericId}`);
+            const label = createLabelSprite(`Bin ${numericId}`);
             label.position.set(node.x * 0.1, node.y * 0.1, node.z * 0.1);
             scene.add(label);
         }
@@ -1897,7 +1948,7 @@ function createLabelSprite(text) {
             tooltip.style.display = 'block';
             tooltip.style.left = `${event.clientX + 10}px`;
             tooltip.style.top = `${event.clientY + 10}px`;
-            tooltip.innerHTML = `Node ID: ${node.name}`;
+            tooltip.innerHTML = `Bin: ${node.name}`;
         } else {
             tooltip.style.display = 'none';
         }
@@ -2029,7 +2080,7 @@ function createLabelSprite(text) {
                 .attr('fill', d => colorScale(d.density))
                 .on('mouseover', function(e, d) {
                     tooltip.style('display', 'block');
-                    tooltip.html(`Node: ${d.node}<br>Density: ${d.density}`);
+                    tooltip.html(`Bin: ${d.node}<br>Density: ${d.density}`);
                 })
                 .on('mousemove', function(e) {
                     tooltip.style('left', (e.pageX + 10) + 'px')
@@ -2131,10 +2182,12 @@ function createLabelSprite(text) {
                     const numericId = child.name; // Assuming node ID is stored in the name property
                     if (nodeIds.includes(numericId)) {
                         child.material.color.set(0xFFAA18); // Highlight color, e.g., yellow
-                        child.scale.set(2, 2, 2); // Enlarge the node for highlighting
+                        child.material.emissive.set(0xFFAA18); // Set emissive color to match the highlight color
+                        //child.scale.set(2, 2, 2); // Enlarge the node for highlighting //Not enlarging right now
                     } else {
                         child.material.color.set(0xFF0000); // Default color, e.g., red
-                        child.scale.set(1.0, 1.0, 1.0); // Reset the size
+                        child.material.emissive.set(0xFF0000); // Reset emissive color to default
+                        //child.scale.set(1.0, 1.0, 1.0); // Reset the size
                     }
                 }
             });
