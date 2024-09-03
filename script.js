@@ -893,7 +893,7 @@ function drawEdges2D(edgeData, context) {
     // Create a color scale based on edge weights
     const colorScale = d3.scaleLinear()
         .domain([minWeight, maxWeight])
-        .range(['#D3D3D3', '#000000']);  // Light grey to black
+        .range(['#ADD8E6', '#00008B']);  // Light grey to black
 
     context.globalAlpha = 0.5;  // 50% opacity for a subtle appearance
     context.lineWidth = 2;  // Slightly thicker line for better visibility
