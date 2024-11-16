@@ -626,9 +626,9 @@ function updateNodeDropdown(nodes) {
         checkbox.dataset.nodeId = numericId; // Store only the numeric ID in data attribute
 
         // Check if the numericId is within the specified interval
-        if (numericId >= 1 && numericId <= 401 && (numericId - 1) % 10 === 0) {
-            checkbox.checked = true;
-        }
+       // if (numericId >= 1 && numericId <= 401 && (numericId - 1) % 10 === 0) {
+       //     checkbox.checked = true;
+        //}
 
         const label = document.createElement('label');
         label.htmlFor = `node${index}`;
@@ -1142,35 +1142,38 @@ let initialColorScale;
 function drawLinks({ svg, sourceScale, targetScale, data, width, height, useWeightColor = false }) {
     svg.selectAll("path").remove();
 
-    initialColorScale = d3.scaleOrdinal(d3.schemeCategory10)
-        .domain([...new Set(data.map(d => d.Source))]);
+    // Define a color scale with only 4 colors
+    const colorPalette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"];  // 4 distinct colors
+    initialColorScale = d3.scaleOrdinal()
+        .domain([...new Set(data.map(d => d.Source))])
+        .range(colorPalette);
 
     // Define a sequential color scale based on weight for gray links
     const weightColorScale = d3.scaleSequential(d3.interpolateBlues)
         .domain(d3.extent(data, d => d.Weight));
 
     const links = svg.append("g")
-       .selectAll("path")
-       .data(data)
-       .enter()
-       .append("path")
-       .attr("d", d => {
-           const sourceY = sourceScale(d.Source);
-           const targetY = targetScale(d.Target);
-           return `M20,${sourceY} L${width - 20},${targetY}`;  // Adjusted to start and end within the margins
-       })
-       .attr("stroke", d => useWeightColor ? weightColorScale(d.Weight) : initialColorScale(d.Source))
-       .attr("stroke-width", 2)
-       .attr("opacity", 0.7)
-       .attr("fill", "none");
+        .selectAll("path")
+        .data(data)
+        .enter()
+        .append("path")
+        .attr("d", d => {
+            const sourceY = sourceScale(d.Source);
+            const targetY = targetScale(d.Target);
+            return `M20,${sourceY} L${width - 20},${targetY}`;  // Adjusted to start and end within the margins
+        })
+        .attr("stroke", d => useWeightColor ? weightColorScale(d.Weight) : initialColorScale(d.Source))
+        .attr("stroke-width", 2)
+        .attr("opacity", 0.7)
+        .attr("fill", "none");
 
     // Tooltip functionality
     links.on("mouseover", function(event, d) {
         d3.select("#tooltip")
-          .style("display", "block")
-          .style("left", (event.pageX + 10) + "px")
-          .style("top", (event.pageY + 10) + "px")
-          .html(`Source: ${d.Source}<br>Target: ${d.Target}<br>Weight: ${d.Weight.toFixed(4)}`);
+            .style("display", "block")
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY + 10) + "px")
+            .html(`Source: ${d.Source}<br>Target: ${d.Target}<br>Weight: ${d.Weight.toFixed(4)}`);
     })
     .on("mouseout", function() {
         d3.select("#tooltip").style("display", "none");
@@ -1188,6 +1191,7 @@ function drawLinks({ svg, sourceScale, targetScale, data, width, height, useWeig
     // Add the opacity control slider functionality
     addOpacityControl();
 }
+
 
 
 //Control Opacity Function for Parallel Plot, 3d and 2d vis
@@ -1833,7 +1837,7 @@ function onWindowResize() {
 window.addEventListener('resize', onWindowResize, false);
 onWindowResize();  // Call initially to set size.
 
-scene.background = new THREE.Color(0xf0f0f0);
+scene.background = new THREE.Color(0xffffff);
 
 // Animation loop
 function animate() {
