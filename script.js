@@ -1357,7 +1357,8 @@ function draw2DVisualization(data) {
                 tooltip.style.display = 'block';
                 tooltip.style.left = `${e.clientX + 10}px`;
                 tooltip.style.top = `${e.clientY + 10}px`;
-                tooltip.innerHTML = `Bin: ${node.id}`;
+                tooltip.innerHTML = `Bin: ${node.id.match(/\d+/)[0]}`;
+
 
                 // Highlight the node
                 context.fillStyle = 'yellow'; // Change color for highlight
